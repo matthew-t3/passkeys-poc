@@ -1,0 +1,17 @@
+{
+  "name": "webauthn",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev:css": "tailwindcss -i ./input.css -o ./main.css --watch",
+    "dev": "pnpm run '/^dev:.*/'",
+    "dev:vite": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.4",
+    "vite": "^5.2.0"
+  }
+}
