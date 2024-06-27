@@ -5,7 +5,9 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.11.3",
-    "hono": "^4.4.6"
+    "cbor-x": "^1.5.9",
+    "hono": "^4.4.6",
+    "lucia": "^3.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.17",

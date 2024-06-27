@@ -27,7 +27,7 @@ async function init() {
 
   const challengeRes = await getChallenge()
 
-  challenge = Uint8Array.from(challengeRes.split(','))
+  challenge = Uint8Array.from(challengeRes, c => c.charCodeAt(0))
 }
 
 init()
@@ -45,6 +45,7 @@ function bufferToBase64URLString(buffer) {
   }
 
   const base64String = btoa(str);
+  console.log('base64String', base64String);
 
   return base64String.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 }
@@ -62,6 +63,7 @@ function credToJSON(credential) {
   const responsePublicKey = response.getPublicKey()
   const publicKey = bufferToBase64URLString(responsePublicKey)
   const authenticatorData = bufferToBase64URLString(response.getAuthenticatorData())
+  console.log('response.clientDataJSON', response.clientDataJSON);
 
   return {
     id,
