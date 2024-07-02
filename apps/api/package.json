@@ -5,6 +5,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.11.3",
+    "@simplewebauthn/server": "^10.0.0",
     "cbor-x": "^1.5.9",
     "hono": "^4.4.6",
     "lucia": "^3.2.0"

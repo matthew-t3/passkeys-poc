@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="/main.css" />
+    <script src="https://unpkg.com/@simplewebauthn/browser/dist/bundle/index.umd.min.js"></script>
     <title>Passkeys</title>
   </head>
   <body class="bg-gray-200 h-svh w-full">
@@ -42,13 +43,33 @@
         class="rounded shadow my-4 mx-auto w-96 bg-white p-4 gap-8 flex flex-col"
       >
         <h1 class="font-bold text-2xl">Authenticate</h1>
-        <button
-          class="bg-cyan-200 hover:bg-cyan-300 rounded border-cyan-300 py-2"
-          onclick="authenticate()"
+        <form
+          class="flex flex-col gap-4"
+          onsubmit="onAuthenticate(event)"
+          id="authenticate"
         >
-          Authenticate
-        </button>
+          <input
+            type="text"
+            name="username"
+            placeholder="Username"
+            required
+            class="border border-gray-400 rounded p-2"
+            autocomplete="username webauthn"
+          />
+
+          <button
+            class="bg-cyan-200 hover:bg-cyan-300 rounded border-cyan-300 py-2"
+            type="submit"
+          >
+            Authenticate
+          </button>
+        </form>
       </div>
+
+      <div
+        id="success"
+        class="bg-slate-300 border-slate-800 border rounded max-w-[60%] mx-auto p-4 hidden"
+      ></div>
     </main>
 
     <script type="text/javascript" src="/main.js"></script>

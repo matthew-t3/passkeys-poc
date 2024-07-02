@@ -1,86 +1,70 @@
+const { startRegistration, startAuthentication } = SimpleWebAuthnBrowser
 const BASE_URL = 'http://localhost:3000'
+const errNode = document.getElementById('error')
+const successNode = document.getElementById('success')
 
 function request(path, opt = {}) {
   return fetch(`${BASE_URL}${path}`, { ...opt, credentials: 'include' })
 }
 
-let challenge = new Uint8Array(32)
+function setError(err) {
+  successNode.classList.add('hidden')
+  errNode.classList.remove('hidden')
 
-async function getChallenge() {
-  const res = await request('/challenge')
+  const errorText = document.createTextNode(err)
 
-  const { challenge: challengeStr } = await res.json();
+  errNode.appendChild(errorText)
+}
 
-  return challengeStr
+function clearMessages() {
+  errNode.classList.add('hidden')
+  successNode.classList.add('hidden')
+  successNode.innerHTML = ''
+  errNode.innerHTML = ''
+}
+
+function setSuccessNode(message) {
+  errNode.classList.add('hidden')
+  successNode.classList.remove('hidden')
+  successNode.innerHTML = ''
+
+  successNode.innerHTML = `<pre>${JSON.stringify(message, null, 2)}</pre>`
 }
 
 async function init() {
-  if (!navigator.credentials) {
-    const errNode = document.getElementById('error')
-
-    errNode.classList.remove('hidden')
-
-    const errorText = document.createTextNode('WebAuthn is not available on your browser')
-
-    errNode.appendChild(errorText)
-  }
-
-  const challengeRes = await getChallenge()
-
-  challenge = Uint8Array.from(challengeRes, c => c.charCodeAt(0))
+  request('/auth/options', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({})
+  }).then(res => res.json())
+    .then(data => {
+      return startAuthentication(data, true)
+    })
+    .then(attestation => {
+      return request('/auth/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(attestation)
+      })
+    })
+    .then(res => res.json())
+    .then(data => {
+      setSuccessNode(data)
+    })
+    .catch(err => {
+      console.error('err', err);
+      setError(err.message)
+    })
 }
 
 init()
 
-/**
- * 
- * @param {ArrayBuffer} buffer 
- */
-function bufferToBase64URLString(buffer) {
-  const bytes = new Uint8Array(buffer);
-  let str = '';
-
-  for (const charCode of bytes) {
-    str += String.fromCharCode(charCode);
-  }
-
-  const base64String = btoa(str);
-  console.log('base64String', base64String);
-
-  return base64String.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-}
-
-/**
- * 
- * @param {Credential} credential 
- */
-function credToJSON(credential) {
-  const { id, rawId, response, type } = credential
-
-  const transports = response.getTransports()
-  const responsePublicKeyAlgorithm = response.getPublicKeyAlgorithm()
-
-  const responsePublicKey = response.getPublicKey()
-  const publicKey = bufferToBase64URLString(responsePublicKey)
-  const authenticatorData = bufferToBase64URLString(response.getAuthenticatorData())
-  console.log('response.clientDataJSON', response.clientDataJSON);
-
-  return {
-    id,
-    rawId: bufferToBase64URLString(rawId),
-    response: {
-      attestationObject: bufferToBase64URLString(response.attestationObject),
-      clientDataJSON: bufferToBase64URLString(response.clientDataJSON),
-      transports,
-      publicKeyAlgorithm: responsePublicKeyAlgorithm,
-      publicKey,
-      authenticatorData,
-    },
-    type,
-  }
-}
-
 async function onSubmit(evt) {
+  clearMessages()
   evt.preventDefault()
 
   const formEl = document.getElementById('registration')
@@ -89,42 +73,97 @@ async function onSubmit(evt) {
 
   const username = formData.get('username')
 
-  const opt = {
-    publicKey: {
-      challenge,
-      rp: {
-        name: 'My Secure Application',
-        id: 'localhost'
+  let response
+
+  try {
+    response = await request('/register/options', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
       },
-      user: {
-        id: crypto.getRandomValues(new Uint8Array(32)),
-        displayName: username,
-        name: username,
-      },
-      pubKeyCredParams: [
-        { alg: -7, type: "public-key" }
-      ],
-      attestation: 'direct',
-    }
+      body: JSON.stringify({ username })
+    })
+  } catch (err) {
+    console.error('err', err);
+    setError(err.message)
   }
 
-  const creds = await navigator.credentials.create(opt)
-  console.log('creds', creds);
+  if (!response.ok) {
+    const { message } = await response.json()
+    return setError(message)
+  }
 
-  const jsonData = credToJSON(creds)
+  const opts = await response.json()
+  let attestationResponse
 
-  await request('/verify', {
+  try {
+    attestationResponse = await startRegistration(opts)
+    console.log('attestationResponse', attestationResponse);
+  } catch (err) {
+    console.error('err', err);
+    setError(err.message)
+  }
+
+  await request('/register/verify', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(jsonData)
+    body: JSON.stringify(attestationResponse)
   })
 }
 
-async function authenticate() {
+async function onAuthenticate(evt) {
+  clearMessages()
+  evt.preventDefault()
   console.log('called')
 
-  const challengeRes = await getChallenge()
-  console.log('challengeRes', challengeRes.toString());
+  const formEl = document.getElementById('authenticate')
+
+  const formData = new FormData(formEl)
+
+  const username = formData.get('username')
+
+  let response
+
+  try {
+    response = await request('/auth/options', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ username })
+    })
+  } catch (err) {
+    console.error('err', err);
+    setError(err.message)
+  }
+
+
+  if (!response.ok) {
+    const { message } = await response.json()
+    return setError(message)
+  }
+
+  const opts = await response.json()
+  let attestationResponse
+
+  try {
+    attestationResponse = await startAuthentication(opts)
+    console.log('attestationResponse', attestationResponse);
+  } catch (err) {
+    console.error('err', err);
+    setError(err.message)
+  }
+
+  const verificationResponse = await request('/auth/verify', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(attestationResponse)
+  })
+
+  const message = await verificationResponse.json()
+  setSuccessNode(message)
 }

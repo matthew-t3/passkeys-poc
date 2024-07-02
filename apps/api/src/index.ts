@@ -2,129 +2,245 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { setCookie, getCookie } from 'hono/cookie';
+import {
+  GenerateAuthenticationOptionsOpts,
+  GenerateRegistrationOptionsOpts,
+  VerifiedAuthenticationResponse,
+  VerifiedRegistrationResponse,
+  VerifyAuthenticationResponseOpts,
+  generateAuthenticationOptions,
+  generateRegistrationOptions,
+  verifyAuthenticationResponse,
+  verifyRegistrationResponse,
+} from '@simplewebauthn/server';
 import { generateIdFromEntropySize } from 'lucia';
-import { decode } from 'cbor-x';
 
 const app = new Hono();
 
-const issuedChallenges: Set<string> = new Set();
+const rpName = 'Sample Passkey application';
+const rpID = 'localhost';
+const origin = `http://${rpID}:5173`;
+const cookieOpts = {
+  sameSite: 'None',
+  httpOnly: true,
+  secure: true,
+} as const;
+
+type User = {
+  id: string;
+  username: string;
+};
+
+type Passkey = {
+  user: User;
+  counter: number;
+  credentialPublicKey: Uint8Array;
+  credentialID: string;
+  aaguid: string;
+  transports: AuthenticatorTransport[];
+};
+
+// key is user.username
+const users = new Map<string, User>();
+// key is user.id
+const passkeys = new Map<string, Array<Passkey>>();
 
 app.use('*', cors({ credentials: true, origin: 'http://localhost:5173' }));
 
 app.get('/', (c) => {
-  return c.text('Hello Hono!');
+  return c.text('ok!');
 });
 
-app.get('/challenge', async (c) => {
-  const challenge = generateIdFromEntropySize(32);
+app.post('/register/options', async (c) => {
+  const { username } = await c.req.json<{ username: string }>();
 
-  issuedChallenges.add(challenge);
+  let userInfo = users.get(username);
+  if (!userInfo) {
+    userInfo = { id: generateIdFromEntropySize(10), username };
+  }
 
-  setCookie(c, 'challenge', challenge, {
-    sameSite: 'None',
-    httpOnly: true,
-    secure: true,
-  });
+  users.set(username, userInfo);
+  const credentials = passkeys.get(userInfo.id);
 
-  return c.json({
-    challenge,
-  });
+  const opts: GenerateRegistrationOptionsOpts = {
+    rpName,
+    rpID,
+    userName: username,
+    attestationType: 'none',
+    excludeCredentials: (credentials ?? []).map((cred) => ({
+      id: cred.credentialID,
+      type: 'public-key',
+      transports: cred.transports,
+    })),
+    authenticatorSelection: {
+      residentKey: 'discouraged',
+      userVerification: 'preferred',
+    },
+    supportedAlgorithmIDs: [-7, -257],
+  };
+
+  const options = await generateRegistrationOptions(opts);
+
+  setCookie(c, 'challenge', options.challenge, cookieOpts);
+  setCookie(c, 'username', username, cookieOpts);
+
+  return c.json(options);
 });
 
-app.post('/verify', async (c) => {
+app.post('register/verify', async (c) => {
   const body = await c.req.json();
-  const { id, rawId, type, response } = body;
-  const challengeCookie = getCookie(c, 'challenge');
+  const username = getCookie(c, 'username') as string;
+  const expectedChallenge = getCookie(c, 'challenge') as string;
 
-  if (!id) {
-    c.status(400);
-    return c.json({
-      message: 'id is required',
+  let verification: VerifiedRegistrationResponse;
+  try {
+    verification = await verifyRegistrationResponse({
+      response: body,
+      expectedChallenge,
+      expectedOrigin: origin,
+      expectedRPID: rpID,
     });
+  } catch (e) {
+    console.error(e);
+    let message = 'Something went wrong';
+
+    if (e instanceof Error) {
+      message = e.message;
+    }
+
+    return c.json(
+      {
+        message,
+      },
+      400,
+    );
   }
 
-  if (id !== rawId) {
-    c.status(400);
-    return c.json({
-      message: 'id and rawId must be the same',
-    });
+  const { verified, registrationInfo } = verification;
+  console.log('verified', verified);
+  console.log('registrationInfo', registrationInfo);
+
+  const user = users.get(username);
+  console.log('user', user);
+
+  if (verified && registrationInfo) {
+    if (!user) {
+      return c.json({ message: 'User does not exist' }, 400);
+    }
+
+    console.log('body.response.transports', body.response.transports);
+    const passKey: Passkey = {
+      user,
+      counter: registrationInfo.counter,
+      credentialPublicKey: registrationInfo.credentialPublicKey,
+      credentialID: registrationInfo.credentialID,
+      aaguid: registrationInfo.aaguid,
+      transports: body.response.transports,
+    };
+
+    const credentials = passkeys.get(user.id) ?? [];
+    credentials.push(passKey);
+    passkeys.set(user.id, credentials);
   }
 
-  if (type !== 'public-key') {
-    c.status(400);
-    return c.json({
-      message: 'type must be public-key',
-    });
+  setCookie(c, 'challenge', '', cookieOpts);
+
+  return c.json({ verified }, 200);
+});
+
+app.post('/auth/options', async (c) => {
+  let username = getCookie(c, 'username') as string;
+  const body = await c.req.json<{ username: string }>();
+
+  if (body.username) {
+    username = body.username;
   }
 
-  if (!issuedChallenges.has(challengeCookie ?? '')) {
-    c.status(400);
-    return c.json({
-      message: 'invalid challenge',
-    });
+  if (!username) {
+    return c.json({ message: 'Not authenticated' }, 400);
   }
 
-  const utf8String = Buffer.from(response.clientDataJSON, 'base64').toString(
-    'utf-8',
+  const user = users.get(username);
+  let credentials = passkeys.get(user?.id ?? '');
+  if (!user || !credentials) {
+    return c.json({ message: 'User does not exist' }, 400);
+  }
+
+  const opts: GenerateAuthenticationOptionsOpts = {
+    allowCredentials: credentials.map((cred) => ({
+      id: cred.credentialID,
+      type: 'public-key',
+      transports: cred.transports,
+    })),
+    userVerification: 'preferred',
+    rpID,
+  };
+
+  const options = await generateAuthenticationOptions(opts);
+
+  setCookie(c, 'challenge', options.challenge, cookieOpts);
+  setCookie(c, 'username', username, cookieOpts);
+
+  return c.json(options);
+});
+
+app.post('/auth/verify', async (c) => {
+  const body = await c.req.json();
+
+  const username = getCookie(c, 'username') as string;
+  const expectedChallenge = getCookie(c, 'challenge') as string;
+  const user = users.get(username);
+
+  let credentials = passkeys.get(user?.id ?? '');
+  if (!user || !credentials) {
+    return c.json({ message: 'Not authenticated' }, 400);
+  }
+
+  const authenticator = credentials.find(
+    (cred) => cred.credentialID === body.id,
   );
-  const { type: authType, origin, challenge } = JSON.parse(utf8String);
 
-  if (authType !== 'webauthn.create') {
-    c.status(400);
-    return c.json({
-      message: 'type must be webauthn.create',
-    });
+  if (!authenticator) {
+    return c.json({ message: 'Authenticator not found' }, 400);
   }
 
-  if (origin !== 'http://localhost:5173') {
-    c.status(400);
-    return c.json({
-      message: 'invalid origin',
-    });
+  let verification: VerifiedAuthenticationResponse;
+  try {
+    const opts: VerifyAuthenticationResponseOpts = {
+      response: body,
+      expectedChallenge,
+      expectedOrigin: origin,
+      expectedRPID: rpID,
+      authenticator,
+      requireUserVerification: false,
+    };
+
+    verification = await verifyAuthenticationResponse(opts);
+  } catch (e) {
+    console.error(e);
+    let message = 'Something went wrong';
+
+    if (e instanceof Error) {
+      message = e.message;
+    }
+
+    return c.json(
+      {
+        message,
+      },
+      400,
+    );
   }
 
-  const utf8Challenge = Buffer.from(challenge, 'base64').toString('utf-8');
+  const { verified, authenticationInfo } = verification;
 
-  if (utf8Challenge !== challengeCookie) {
-    c.status(400);
-    return c.json({
-      message: 'invalid challenge',
-    });
+  if (verified) {
+    authenticator.counter = authenticationInfo.newCounter;
   }
 
-  console.log('attestationobject', response.attestationObject);
-  const attestationObject = decode(
-    Buffer.from(response.attestationObject, 'base64url'),
-  );
-  console.log('attestationObject', attestationObject);
-  const fmt = attestationObject.fmt;
-  console.log('fmt', fmt);
-  const authData = attestationObject.authData;
-  console.log('authData', authData);
-  const attStmt = attestationObject.attStmt;
-  console.log('attStmt', attStmt);
+  setCookie(c, 'challenge', '', cookieOpts);
 
-  const dataView = new DataView(new ArrayBuffer(2));
-  const idLenBytes = authData.slice(53, 55);
-  console.log('idLenBytes', idLenBytes);
-  idLenBytes.forEach((value, index) => dataView.setUint8(index, value));
-  console.log('dataView', dataView);
-  const credentialIdLength = dataView.getUint16(0);
-  console.log('credentialIdLength', credentialIdLength);
-
-  const credentialId = authData.slice(55, 55 + credentialIdLength);
-  console.log('credentialId', credentialId.toString('hex'));
-
-  const publicKeyBytes = authData.slice(55 + credentialIdLength);
-  console.log('publicKeyBytes', publicKeyBytes);
-
-  // // the publicKeyBytes are encoded again as CBOR
-  const publicKeyObject = decode(publicKeyBytes);
-  console.log(publicKeyObject);
-
-  return c.json({
-    message: 'ok',
-  });
+  return c.json({ verified, authenticationInfo, user }, 200);
 });
 
 const port = 3000;
