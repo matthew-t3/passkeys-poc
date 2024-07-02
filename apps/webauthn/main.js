@@ -1,5 +1,6 @@
 const { startRegistration, startAuthentication } = SimpleWebAuthnBrowser
 const BASE_URL = window.__APP_ENV__?.['VITE_API_DOMAIN'] || 'http://localhost:3000'
+console.log('window.__APP_ENV__', window.__APP_ENV__);
 console.log('BASE_URL', BASE_URL);
 const errNode = document.getElementById('error')
 const successNode = document.getElementById('success')
