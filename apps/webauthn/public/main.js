@@ -73,8 +73,8 @@ async function init() {
 
 window.addEventListener('load', function () {
   // your code here
-  if (window.__APP_ENV__?.VITE_API_DOMAIN) {
-    BASE_URL = window.__APP_ENV__?.VITE_API_DOMAIN
+  if (globalThis?.BASE_URL) {
+    BASE_URL = globalThis?.BASE_URL
     console.log('BASE_URL', BASE_URL);
   }
   init()
