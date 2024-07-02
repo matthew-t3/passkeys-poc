@@ -39,6 +39,9 @@ importers:
 
   apps/webauthn:
     devDependencies:
+      dotenv-cli:
+        specifier: ^7.4.2
+        version: 7.4.2
       tailwindcss:
         specifier: ^3.4.4
         version: 3.4.4
