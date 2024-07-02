@@ -18,8 +18,9 @@ import { generateIdFromEntropySize } from 'lucia';
 const app = new Hono();
 
 const rpName = 'Sample Passkey application';
-const rpID = 'localhost';
-const origin = `http://${rpID}:5173`;
+// const rpID = 'localhost';
+const rpID = 'my-one-billion-project.vercel.app';
+const origin = `https://${rpID}`;
 const cookieOpts = {
   sameSite: 'None',
   httpOnly: true,
@@ -45,7 +46,17 @@ const users = new Map<string, User>();
 // key is user.id
 const passkeys = new Map<string, Array<Passkey>>();
 
-app.use('*', cors({ credentials: true, origin: 'http://localhost:5173' }));
+app.use(
+  '*',
+  cors({
+    credentials: true,
+    origin: [
+      'http://localhost:5173',
+      'https://evil-website-liart.vercel.app',
+      'https://my-one-billion-project.vercel.app',
+    ],
+  }),
+);
 
 app.get('/', (c) => {
   return c.text('ok!');

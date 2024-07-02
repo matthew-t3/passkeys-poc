@@ -44,7 +44,7 @@ async function init() {
     return
   }
 
-  res.json()
+  response.json()
     .then(data => {
 
       return startAuthentication(data, true)
