@@ -1,7 +1,5 @@
 const { startRegistration, startAuthentication } = SimpleWebAuthnBrowser
-const BASE_URL = window.__APP_ENV__?.['VITE_API_DOMAIN'] || 'http://localhost:3000'
-console.log('window.__APP_ENV__', window.__APP_ENV__);
-console.log('BASE_URL', BASE_URL);
+let BASE_URL = 'http://localhost:3000'
 const errNode = document.getElementById('error')
 const successNode = document.getElementById('success')
 
@@ -72,7 +70,15 @@ async function init() {
     })
 }
 
-init()
+
+window.addEventListener('load', function () {
+  // your code here
+  if (window.__APP_ENV__?.VITE_API_DOMAIN) {
+    BASE_URL = window.__APP_ENV__?.VITE_API_DOMAIN
+    console.log('BASE_URL', BASE_URL);
+  }
+  init()
+})
 
 async function onSubmit(evt) {
   clearMessages()
