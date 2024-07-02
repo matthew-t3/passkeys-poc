@@ -1,5 +1,6 @@
 const { startRegistration, startAuthentication } = SimpleWebAuthnBrowser
-const BASE_URL = 'http://localhost:3000'
+const BASE_URL = window.__APP_ENV__?.['VITE_API_DOMAIN'] || 'http://localhost:3000'
+console.log('BASE_URL', BASE_URL);
 const errNode = document.getElementById('error')
 const successNode = document.getElementById('success')
 
@@ -32,14 +33,21 @@ function setSuccessNode(message) {
 }
 
 async function init() {
-  request('/auth/options', {
+  const response = await request('/auth/options', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({})
-  }).then(res => res.json())
+  })
+
+  if (!response.ok) {
+    return
+  }
+
+  res.json()
     .then(data => {
+
       return startAuthentication(data, true)
     })
     .then(attestation => {
@@ -51,7 +59,9 @@ async function init() {
         body: JSON.stringify(attestation)
       })
     })
-    .then(res => res.json())
+    .then(res => {
+      return res.json()
+    })
     .then(data => {
       setSuccessNode(data)
     })

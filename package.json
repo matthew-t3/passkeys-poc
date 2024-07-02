@@ -6,10 +6,13 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "auth": "pnpm --filter webauthn",
-    "dev": "pnpm --parallel dev",
+    "dev": "dotenv -- pnpm --parallel dev",
     "api": "pnpm --filter api"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "dotenv-cli": "^7.4.2"
+  }
 }
