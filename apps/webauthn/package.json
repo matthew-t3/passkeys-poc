@@ -7,7 +7,7 @@
     "dev:css": "tailwindcss -i ./input.css -o ./main.css --watch",
     "dev": "pnpm run '/^dev:.*/'",
     "dev:vite": "vite",
-    "build": "VITE_API_DOMAIN=http://localhost:3121 vite build",
+    "build": "vite build",
     "preview": "vite preview"
   },
   "devDependencies": {
